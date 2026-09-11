@@ -7,7 +7,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <title>QrApp Web</title>
-  <link rel="stylesheet" href="style.css?v=2.0">
+  <link rel="stylesheet" href="style.css?v=2.1">
 </head>
 <body>
   <header class="topbar">
@@ -16,7 +16,6 @@
       <p>Inventario de productos</p>
     </div>
     <div class="topbar-actions">
-      <!-- Botón para subir CSV local -->
       <label for="csvFileInput" class="btn-upload" title="Subir otro inventario CSV">
         📁 Cargar CSV
       </label>
@@ -49,7 +48,6 @@
     <section id="products" class="products"></section>
     <div id="empty" class="empty hidden">No se encontraron productos.</div>
 
-    <!-- Contenedor fijo de Paginación -->
     <div id="paginationControls" class="pagination"></div>
   </main>
 
@@ -57,7 +55,8 @@
     <small>QrApp Web · Inventario dinámico</small>
   </footer>
 
-  <script src="https://unpkg.com/@zxing/browser@0.1.5/umd/index.min.js"></script>
-  <script src="app.js?v=2.0"></script>
+  <!-- Usamos una versión UMD directa y estable de ZXing Browser -->
+  <script src="https://cdn.jsdelivr.net/npm/@zxing/browser@0.1.5/umd/index.min.js"></script>
+  <script src="app.js?v=2.1"></script>
 </body>
 </html>
