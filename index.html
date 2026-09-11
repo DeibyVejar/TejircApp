@@ -7,7 +7,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <title>QrApp Web</title>
-  <link rel="stylesheet" href="style.css?v=2.1">
+  <link rel="stylesheet" href="style.css?v=2.2">
 </head>
 <body>
   <header class="topbar">
@@ -39,7 +39,7 @@
         <h2>Escanear producto</h2>
         <button id="closeScanner" class="icon-btn">✕</button>
       </div>
-      <video id="video" playsinline></video>
+      <video id="video" playsinline autoplay muted></video>
       <div id="scanStatus" class="scan-status">Apunta la cámara al código de barras.</div>
     </section>
 
@@ -55,8 +55,8 @@
     <small>QrApp Web · Inventario dinámico</small>
   </footer>
 
-  <!-- Usamos una versión UMD directa y estable de ZXing Browser -->
+  <!-- Librería externa de respaldo por si el navegador no soporta BarcodeDetector nativo -->
   <script src="https://cdn.jsdelivr.net/npm/@zxing/browser@0.1.5/umd/index.min.js"></script>
-  <script src="app.js?v=2.1"></script>
+  <script src="app.js?v=2.2"></script>
 </body>
 </html>
