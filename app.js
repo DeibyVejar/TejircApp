@@ -1,8 +1,8 @@
 const state = {
   products: [],
   filtered: [],
-  reader: null,
-  controls: null,
+  stream: null,
+  scanInterval: null,
   currentPage: 1,
   pageSize: 24
 };
@@ -17,6 +17,51 @@ const video = document.getElementById("video");
 const scanStatus = document.getElementById("scanStatus");
 const paginationEl = document.getElementById("paginationControls");
 const csvFileInput = document.getElementById("csvFileInput");
+
+// --- GESTIÓN DE BASE DE DATOS LOCAL CON INDEXEDDB (Sin límite de 5MB) ---
+function abrirDB() {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open("QrAppDB", 1);
+    request.onerror = () => reject(request.error);
+    request.onsuccess = () => resolve(request.result);
+    request.onupgradeneeded = (event) => {
+      const db = event.target.result;
+      if (!db.objectStoreNames.contains("inventario")) {
+        db.createObjectStore("inventario");
+      }
+    };
+  });
+}
+
+async function guardarCSVEnDB(textoCSV) {
+  try {
+    const db = await abrirDB();
+    const tx = db.transaction("inventario", "readwrite");
+    tx.objectStore("inventario").put(textoCSV, "csv_data");
+    return new Promise((resolve, reject) => {
+      tx.oncomplete = () => resolve(true);
+      tx.onerror = () => reject(tx.error);
+    });
+  } catch (e) {
+    console.error("Error guardando en IndexedDB:", e);
+  }
+}
+
+async function obtenerCSVDebutDB() {
+  try {
+    const db = await abrirDB();
+    const tx = db.transaction("inventario", "readonly");
+    const store = tx.objectStore("inventario");
+    return new Promise((resolve, reject) => {
+      const req = store.get("csv_data");
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+  } catch (e) {
+    console.error("Error leyendo IndexedDB:", e);
+    return null;
+  }
+}
 
 function normalize(value) {
   return String(value ?? "")
@@ -210,31 +255,26 @@ function escapeHtml(value) {
     .replaceAll("'", "&#039;");
 }
 
-// Procesar texto de CSV, guardar en caché local y actualizar estado
-function processCSVText(text, saveToCache = true) {
+async function processCSVText(text, saveDB = true) {
   state.products = parseCSV(text);
   state.filtered = state.products;
   state.currentPage = 1;
   renderProducts(state.products);
 
-  if (saveToCache) {
-    try {
-      localStorage.setItem("qrapp_csv_data", text);
-    } catch (e) {
-      console.warn("No se pudo guardar en el almacenamiento local.", e);
-    }
+  if (saveDB) {
+    await guardarCSVEnDB(text);
   }
 }
 
-// Carga inicial: Prioriza el caché local, si no hay, busca inventario.csv en el servidor
 async function loadInventory() {
-  const cachedCSV = localStorage.getItem("qrapp_csv_data");
-  
-  if (cachedCSV) {
-    processCSVText(cachedCSV, false);
+  // 1. Intentar cargar desde IndexedDB (persistente y sin límite de tamaño)
+  const savedCSV = await obtenerCSVDebutDB();
+  if (savedCSV) {
+    processCSVText(savedCSV, false);
     return;
   }
 
+  // 2. Si no hay en DB, buscar inventario.csv local por defecto
   try {
     const response = await fetch("inventario.csv", { cache: "no-store" });
     if (!response.ok) throw new Error("No se pudo cargar inventario.csv");
@@ -254,17 +294,17 @@ async function loadInventory() {
     productsEl.innerHTML = "";
     paginationEl.innerHTML = "";
     emptyEl.classList.remove("hidden");
-    console.warn("No se encontró inventario.csv inicial, esperando carga manual.", error);
+    console.warn("Esperando carga manual de CSV.", error);
   }
 }
 
-// Manejar la carga del archivo CSV mediante el botón local
+// Subir CSV manual
 csvFileInput.addEventListener("change", (event) => {
   const file = event.target.files[0];
   if (!file) return;
 
   const reader = new FileReader();
-  reader.onload = function(e) {
+  reader.onload = async function(e) {
     const buffer = e.target.result;
     let text;
     try {
@@ -274,65 +314,86 @@ csvFileInput.addEventListener("change", (event) => {
       text = new TextDecoder("windows-1252").decode(buffer);
     }
     
-    processCSVText(text, true);
+    await processCSVText(text, true);
     searchInput.value = "";
   };
   reader.readAsArrayBuffer(file);
 });
 
+// --- SISTEMA DE ESCÁNER DE CÁMARA ROBUSTO (Nativo + ZXing Fallback) ---
 async function startScanner() {
   scannerPanel.classList.remove("hidden");
   scanStatus.textContent = "Solicitando acceso a la cámara...";
 
-  const ZXingLib = window.ZXingBrowser || window.ZXing;
-
-  if (!ZXingLib) {
-    scanStatus.textContent = "No se pudo cargar el lector de códigos.";
-    return;
-  }
-
   try {
-    if (state.controls) state.controls.stop();
-
-    state.reader = new ZXingLib.BrowserMultiFormatReader();
-
-    state.controls = await state.reader.decodeFromVideoDevice(
-      undefined,
-      video,
-      (result, error) => {
-        if (result) {
-          const code = result.getText();
-          scanStatus.textContent = `Código detectado: ${code}`;
-
-          const product = findByCode(code);
-          if (product) {
-            stopScanner();
-            showDetail(product);
-          } else {
-            searchInput.value = code;
-            searchProducts();
-            scanStatus.textContent = `No hay coincidencia exacta para: ${code}`;
-          }
-        }
-      }
-    );
+    state.stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: "environment" }
+    });
+    video.srcObject = state.stream;
+    await video.play();
 
     scanStatus.textContent = "Apunta la cámara al código de barras.";
+
+    // Priorizar BarcodeDetector nativo de móviles (Súper rápido y sin errores de CDN)
+    if ("BarcodeDetector" in window) {
+      const barcodeDetector = new BarcodeDetector({
+        formats: ["code_128", "code_39", "ean_13", "ean_8", "upc_a", "upc_e", "qr_code"]
+      });
+
+      state.scanInterval = setInterval(async () => {
+        try {
+          const codes = await barcodeDetector.detect(video);
+          if (codes.length > 0) {
+            handleScannedCode(codes[0].rawValue);
+          }
+        } catch (err) {
+          // Ignorar errores menores de cuadro vacío
+        }
+      }, 300);
+
+    } else if (window.ZXingBrowser) {
+      // Fallback a la librería ZXing si el navegador no soporta BarcodeDetector nativo
+      const reader = new window.ZXingBrowser.BrowserMultiFormatReader();
+      reader.decodeFromVideoElement(video, (result) => {
+        if (result) {
+          handleScannedCode(result.getText());
+        }
+      });
+    } else {
+      scanStatus.textContent = "Tu navegador no soporta escaneo automático de cámara.";
+    }
+
   } catch (error) {
     console.error(error);
-    scanStatus.textContent =
-      "No se pudo abrir la cámara. Asegúrate de dar permisos de cámara en tu navegador.";
+    scanStatus.textContent = "No se pudo abrir la cámara. Revisa los permisos.";
+  }
+}
+
+function handleScannedCode(code) {
+  scanStatus.textContent = `Código detectado: ${code}`;
+  const product = findByCode(code);
+  if (product) {
+    stopScanner();
+    showDetail(product);
+  } else {
+    searchInput.value = code;
+    searchProducts();
+    scanStatus.textContent = `No hay coincidencia exacta para: ${code}`;
   }
 }
 
 function stopScanner() {
-  if (state.controls) {
-    state.controls.stop();
-    state.controls = null;
+  if (state.scanInterval) {
+    clearInterval(state.scanInterval);
+    state.scanInterval = null;
+  }
+
+  if (state.stream) {
+    state.stream.getTracks().forEach(track => track.stop());
+    state.stream = null;
   }
 
   if (video.srcObject) {
-    video.srcObject.getTracks().forEach(track => track.stop());
     video.srcObject = null;
   }
 
