@@ -210,16 +210,31 @@ function escapeHtml(value) {
     .replaceAll("'", "&#039;");
 }
 
-// Procesar texto de CSV y actualizar estado
-function processCSVText(text) {
+// Procesar texto de CSV, guardar en caché local y actualizar estado
+function processCSVText(text, saveToCache = true) {
   state.products = parseCSV(text);
   state.filtered = state.products;
   state.currentPage = 1;
   renderProducts(state.products);
+
+  if (saveToCache) {
+    try {
+      localStorage.setItem("qrapp_csv_data", text);
+    } catch (e) {
+      console.warn("No se pudo guardar en el almacenamiento local.", e);
+    }
+  }
 }
 
-// Carga inicial por defecto (inventario.csv local)
+// Carga inicial: Prioriza el caché local, si no hay, busca inventario.csv en el servidor
 async function loadInventory() {
+  const cachedCSV = localStorage.getItem("qrapp_csv_data");
+  
+  if (cachedCSV) {
+    processCSVText(cachedCSV, false);
+    return;
+  }
+
   try {
     const response = await fetch("inventario.csv", { cache: "no-store" });
     if (!response.ok) throw new Error("No se pudo cargar inventario.csv");
@@ -233,7 +248,7 @@ async function loadInventory() {
       text = new TextDecoder("windows-1252").decode(buffer);
     }
 
-    processCSVText(text);
+    processCSVText(text, true);
   } catch (error) {
     countLabel.textContent = "Sube un archivo CSV para comenzar";
     productsEl.innerHTML = "";
@@ -243,7 +258,7 @@ async function loadInventory() {
   }
 }
 
-// Manejar la carga del archivo CSV mediante el botón del explorador
+// Manejar la carga del archivo CSV mediante el botón local
 csvFileInput.addEventListener("change", (event) => {
   const file = event.target.files[0];
   if (!file) return;
@@ -258,7 +273,8 @@ csvFileInput.addEventListener("change", (event) => {
     } catch {
       text = new TextDecoder("windows-1252").decode(buffer);
     }
-    processCSVText(text);
+    
+    processCSVText(text, true);
     searchInput.value = "";
   };
   reader.readAsArrayBuffer(file);
@@ -268,7 +284,9 @@ async function startScanner() {
   scannerPanel.classList.remove("hidden");
   scanStatus.textContent = "Solicitando acceso a la cámara...";
 
-  if (!window.ZXingBrowser) {
+  const ZXingLib = window.ZXingBrowser || window.ZXing;
+
+  if (!ZXingLib) {
     scanStatus.textContent = "No se pudo cargar el lector de códigos.";
     return;
   }
@@ -276,7 +294,7 @@ async function startScanner() {
   try {
     if (state.controls) state.controls.stop();
 
-    state.reader = new ZXingBrowser.BrowserMultiFormatReader();
+    state.reader = new ZXingLib.BrowserMultiFormatReader();
 
     state.controls = await state.reader.decodeFromVideoDevice(
       undefined,
@@ -303,7 +321,7 @@ async function startScanner() {
   } catch (error) {
     console.error(error);
     scanStatus.textContent =
-      "No se pudo abrir la cámara. Asegúrate de permitir el acceso y usar HTTPS o localhost.";
+      "No se pudo abrir la cámara. Asegúrate de dar permisos de cámara en tu navegador.";
   }
 }
 
