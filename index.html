@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#10b981">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <title>QrApp Web</title>
+  <link rel="stylesheet" href="style.css?v=2.0">
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <h1>QrApp</h1>
+      <p>Inventario de productos</p>
+    </div>
+    <div class="topbar-actions">
+      <!-- Botón para subir CSV local -->
+      <label for="csvFileInput" class="btn-upload" title="Subir otro inventario CSV">
+        📁 Cargar CSV
+      </label>
+      <input type="file" id="csvFileInput" accept=".csv" style="display: none;">
+      
+      <button id="scanTop" class="primary">📷 Escanear</button>
+    </div>
+  </header>
+
+  <main class="container">
+    <section class="search-box">
+      <input id="searchInput" type="search" placeholder="Buscar por nombre o código..." autocomplete="off">
+    </section>
+
+    <section class="stats">
+      <span id="countLabel">Cargando inventario...</span>
+    </section>
+
+    <section id="scannerPanel" class="scanner hidden">
+      <div class="scanner-header">
+        <h2>Escanear producto</h2>
+        <button id="closeScanner" class="icon-btn">✕</button>
+      </div>
+      <video id="video" playsinline></video>
+      <div id="scanStatus" class="scan-status">Apunta la cámara al código de barras.</div>
+    </section>
+
+    <section id="productDetail" class="detail hidden"></section>
+
+    <section id="products" class="products"></section>
+    <div id="empty" class="empty hidden">No se encontraron productos.</div>
+
+    <!-- Contenedor fijo de Paginación -->
+    <div id="paginationControls" class="pagination"></div>
+  </main>
+
+  <footer>
+    <small>QrApp Web · Inventario dinámico</small>
+  </footer>
+
+  <script src="https://unpkg.com/@zxing/browser@0.1.5/umd/index.min.js"></script>
+  <script src="app.js?v=2.0"></script>
+</body>
+</html>
